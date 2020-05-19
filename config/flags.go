@@ -1,4 +1,4 @@
-package metrics
+package config
 
 import (
 	"github.com/urfave/cli/v2"

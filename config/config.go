@@ -3,10 +3,9 @@ package config
 import (
 	"errors"
 	"fmt"
-	"time"
-
 	"github.com/go-redis/redis/v7"
 	"gopkg.in/yaml.v2"
+	"time"
 )
 
 var (
@@ -31,12 +30,25 @@ func (a RedisAddress) valid() error {
 }
 
 type RedisConfig struct {
-	Standalone []*RedisStandalone `yaml:"standalone,omitempty"`
-	Sentinel   []*RedisSentinel   `yaml:"sentinel,omitempty"`
-	Cluster    []*RedisCluster    `yaml:"cluster,omitempty"`
+	RedisInstances RedisInstanceSlice `yaml:"redis,omitempty"`
 }
 
-type RedisStandalone struct {
+func (r RedisConfig) Equal(n RedisConfig) bool {
+	if len(r.RedisInstances) != len(n.RedisInstances) {
+		return false
+	}
+	for i, r1 := range r.RedisInstances {
+		r2 := n.RedisInstances[i]
+		if r1 != r2 {
+			return false
+		}
+	}
+	return true
+}
+
+type RedisInstanceSlice []*RedisInstance
+
+type RedisInstance struct {
 	Name         string `yaml:"name,omitempty"`
 	RedisAddress `yaml:",inline"`
 	Password     string        `yaml:"password,omitempty"`
@@ -44,7 +56,7 @@ type RedisStandalone struct {
 	ReadTimeout  time.Duration `yaml:"read_timeout"`
 }
 
-func (r RedisStandalone) RedisOptions() *redis.Options {
+func (r *RedisInstance) RedisOptions() *redis.Options {
 	var options = redis.Options{}
 	options.Addr = r.address()
 	options.Network = "tcp"
@@ -54,54 +66,14 @@ func (r RedisStandalone) RedisOptions() *redis.Options {
 	return &options
 }
 
-type RedisSentinel struct {
-	RedisStandalone   `yaml:",inline"`
-	DiscoveryMaster   bool `yaml:"discovery_master"`
-	DiscoverySlave    bool `yaml:"discovery_slave"`
-	DiscoverySentinel bool `yaml:"discovery_sentinel"`
-}
-
-type RedisCluster struct {
-	Name        string         `yaml:"name,omitempty"`
-	Addrs       []RedisAddress `yaml:"addresses"`
-	Password    string         `yaml:"password,omitempty"`
-	DialTimeout time.Duration  `yaml:"connect_timeout"`
-	ReadTimeout time.Duration  `yaml:"read_timeout"`
-	Mode        string         `yaml:"mode"`
-}
-
-func (c RedisCluster) RedisClusterOptions() *redis.ClusterOptions {
-	var clusterOptions = redis.ClusterOptions{}
-	for _, addr := range c.Addrs {
-		clusterOptions.Addrs = append(clusterOptions.Addrs, addr.address())
-	}
-	clusterOptions.Password = c.Password
-	clusterOptions.DialTimeout = c.DialTimeout
-	clusterOptions.ReadTimeout = c.ReadTimeout
-	clusterOptions.ReadOnly = true
-	return &clusterOptions
-}
-
 func ParseRedisConfig(f []byte) (*RedisConfig, error) {
 	var redisConfig = RedisConfig{}
 	err := yaml.Unmarshal(f, &redisConfig)
 	if err != nil {
 		return nil, err
 	}
-	for _, standalone := range redisConfig.Standalone {
-		err = parseRedisStandalone(standalone)
-		if err != nil {
-			return nil, err
-		}
-	}
-	for _, sentinel := range redisConfig.Sentinel {
-		err = parseRedisSentinel(sentinel)
-		if err != nil {
-			return nil, err
-		}
-	}
-	for _, cluster := range redisConfig.Cluster {
-		err = parseRedisCluster(cluster)
+	for _, redisInstance := range redisConfig.RedisInstances {
+		err = parseRedisInstance(redisInstance)
 		if err != nil {
 			return nil, err
 		}
@@ -109,7 +81,7 @@ func ParseRedisConfig(f []byte) (*RedisConfig, error) {
 	return &redisConfig, nil
 }
 
-func parseRedisStandalone(s *RedisStandalone) error {
+func parseRedisInstance(s *RedisInstance) error {
 	if s.Port == 0 {
 		s.Port = 6379
 	}
@@ -126,38 +98,4 @@ func parseRedisStandalone(s *RedisStandalone) error {
 	//	return err
 	//}
 	return s.valid()
-}
-
-func parseRedisSentinel(s *RedisSentinel) error {
-	if s.Port == 0 {
-		s.Port = 26379
-	}
-	if s.Host == "" {
-		s.Host = "localhost"
-	}
-	if s.DialTimeout.Seconds() > MaxDialTimeout.Seconds() {
-		s.DialTimeout = MaxDialTimeout
-	}
-	if s.ReadTimeout.Seconds() > MaxReadTimeout.Seconds() {
-		s.ReadTimeout = MaxReadTimeout
-	}
-	//if err := s.valid(); err != nil {
-	//	return err
-	//}
-	return s.valid()
-}
-
-func parseRedisCluster(c *RedisCluster) error {
-	for _, addr := range c.Addrs {
-		if err := addr.valid(); err != nil {
-			return err
-		}
-	}
-	if c.DialTimeout.Seconds() > MaxDialTimeout.Seconds() {
-		c.DialTimeout = MaxDialTimeout
-	}
-	if c.ReadTimeout.Seconds() > MaxReadTimeout.Seconds() {
-		c.ReadTimeout = MaxReadTimeout
-	}
-	return nil
 }

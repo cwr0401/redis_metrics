@@ -1,11 +1,12 @@
 package main
 
 import (
-	"log"
 	"os"
 
+	"github.com/cwr0401/redis_metrics/config"
 	"github.com/cwr0401/redis_metrics/metrics"
 	"github.com/cwr0401/redis_metrics/version"
+	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 )
 
@@ -13,7 +14,7 @@ func main() {
 	app := &cli.App{
 		Name:    "redis-metrics",
 		Version: version.Version.String(),
-		Flags:   metrics.Flags,
+		Flags:   config.Flags,
 		Action:  metrics.RedisMetricsAction,
 		Authors: []*cli.Author{
 			&cli.Author{

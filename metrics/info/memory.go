@@ -16,321 +16,526 @@ const (
 	noeviction                // Don't evict anything, just return an error on write operations.
 )
 
-var (
-	// Memory
-	// used_memory
-	RedisMemoryUsedMemory = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "used_memory",
-		Help:      "Total number of bytes allocated by Redis using its allocator (either standard libc, jemalloc, or an alternative allocator such as tcmalloc).",
-	},
-		[]string{"node_name", "node_address"})
+type RedisMemoryCollector struct {
+	UsedMemory             *prometheus.GaugeVec
+	UsedMemoryRSS          *prometheus.GaugeVec
+	UsedMemoryPeak         *prometheus.GaugeVec
+	UsedMemoryOverhead     *prometheus.GaugeVec
+	UsedMemoryStartup      *prometheus.GaugeVec
+	UsedMemoryDataset      *prometheus.GaugeVec
+	TotalSystemMemory      *prometheus.GaugeVec
+	UsedMemoryLua          *prometheus.GaugeVec
+	UsedMemoryScripts      *prometheus.GaugeVec
+	Maxmemory              *prometheus.GaugeVec
+	MaxmemoryPolicy        *prometheus.GaugeVec
+	MemFragmentationRatio  *prometheus.GaugeVec
+	MemAllocator           *prometheus.GaugeVec
+	ActiveDefragRunning    *prometheus.GaugeVec
+	LazyfreePendingObjects *prometheus.GaugeVec
+	AllocatorAllocated     *prometheus.GaugeVec
+	AllocatorActive        *prometheus.GaugeVec
+	AllocatorResident      *prometheus.GaugeVec
+	AllocatorFragRatio     *prometheus.GaugeVec
+	AllocatorFragBytes     *prometheus.GaugeVec
+	AllocatorRSSRatio      *prometheus.GaugeVec
+	AllocatorRSSBytes      *prometheus.GaugeVec
+	RSSOverheadRatio       *prometheus.GaugeVec
+	RSSOverheadBytes       *prometheus.GaugeVec
+	MemFragmentationBytes  *prometheus.GaugeVec
+	MemNotCountedForEvict  *prometheus.GaugeVec
+	MemReplicationBacklog  *prometheus.GaugeVec
+	MemClientsSlaves       *prometheus.GaugeVec
+	MemClientsNormal       *prometheus.GaugeVec
+	MemAofBuffer           *prometheus.GaugeVec
+	NumberOfCachedScripts  *prometheus.GaugeVec
+}
 
-	// used_memory_rss
-	RedisMemoryUsedMemoryRSS = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "used_memory_rss",
-		Help:      "Number of bytes that Redis allocated as seen by the operating system (a.k.a resident set size). This is the number reported by tools such as top(1) and ps(1).",
-	},
-		[]string{"node_name", "node_address"})
+func NewRedisMemoryCollector() *RedisMemoryCollector {
 
-	// used_memory_peak
-	RedisMemoryUsedMemoryPeak = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "used_memory_peak",
-		Help:      "Peak memory consumed by Redis (in bytes), The percentage of used_memory_peak out of used_memory.",
-	},
-		[]string{"node_name", "node_address"})
+	var (
+		// Memoryr
+		// used_memory
+		redisMemoryUsedMemory = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "used_memory",
+			Help:      "Total number of bytes allocated by Redis using its allocator (either standard libc, jemalloc, or an alternative allocator such as tcmalloc).",
+		},
+			[]string{"node_name", "node_address"})
 
-	// used_memory_peak_perc
-	//RedisMemoryUesdMemoryPeakPerc = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-	//	Namespace: "redis",
-	//	Subsystem: "memory",
-	//	Name:      "used_memory_peak_perc",
-	//	Help:      "The percentage of used_memory_peak out of used_memory.",
-	//},
-	//	[]string{"node_name", "node_address"})
+		// used_memory_rss
+		redisMemoryUsedMemoryRSS = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "used_memory_rss",
+			Help:      "Number of bytes that Redis allocated as seen by the operating system (a.k.a resident set size). This is the number reported by tools such as top(1) and ps(1).",
+		},
+			[]string{"node_name", "node_address"})
 
-	// used_memory_overhead
-	RedisMemoryUsedMemoryOverhead = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "used_memory_overhead",
-		Help:      "The sum in bytes of all overheads that the server allocated for managing its internal data structures.",
-	},
-		[]string{"node_name", "node_address"})
+		// used_memory_peak
+		redisMemoryUsedMemoryPeak = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "used_memory_peak",
+			Help:      "Peak memory consumed by Redis (in bytes), The percentage of used_memory_peak out of used_memory.",
+		},
+			[]string{"node_name", "node_address"})
 
-	// used_memory_startup
-	RedisMemoryUsedMemoryStartup = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "used_memory_startup",
-		Help:      "Initial amount of memory consumed by Redis at startup in bytes.",
-	},
-		[]string{"node_name", "node_address"})
+		// used_memory_peak_perc
+		//RedisMemoryUesdMemoryPeakPerc = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		//	Namespace: "redis",
+		//	Subsystem: "memory",
+		//	Name:      "used_memory_peak_perc",
+		//	Help:      "The percentage of used_memory_peak out of used_memory.",
+		//},
+		//	[]string{"node_name", "node_address"})
 
-	// used_memory_dataset
-	RedisMemoryUsedMemoryDataset = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "used_memory_dataset",
-		Help:      "The size in bytes of the dataset (used_memory_overhead subtracted from used_memory).",
-	},
-		[]string{"node_name", "node_address"})
+		// used_memory_overhead
+		redisMemoryUsedMemoryOverhead = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "used_memory_overhead",
+			Help:      "The sum in bytes of all overheads that the server allocated for managing its internal data structures.",
+		},
+			[]string{"node_name", "node_address"})
 
-	// used_memory_dataset_perc
-	//RedisMemoryUsedMemoryDatasetPerc = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-	//	Namespace: "redis",
-	//	Subsystem: "memory",
-	//	Name:      "used_memory_dataset_perc",
-	//	Help:      "The percentage of used_memory_dataset out of the net memory usage (used_memory minus used_memory_startup).",
-	//},
-	//	[]string{"node_name", "node_address"})
+		// used_memory_startup
+		redisMemoryUsedMemoryStartup = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "used_memory_startup",
+			Help:      "Initial amount of memory consumed by Redis at startup in bytes.",
+		},
+			[]string{"node_name", "node_address"})
 
-	// total_system_memory
-	RedisMemoryTotalSystemMemory = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "total_system_memory",
-		Help:      "The total amount of memory that the Redis host has.",
-	},
-		[]string{"node_name", "node_address"})
+		// used_memory_dataset
+		redisMemoryUsedMemoryDataset = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "used_memory_dataset",
+			Help:      "The size in bytes of the dataset (used_memory_overhead subtracted from used_memory).",
+		},
+			[]string{"node_name", "node_address"})
 
-	// used_memory_lua
-	RedisMemoryUsedMemoryLua = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "used_memory_lua",
-		Help:      "Number of bytes used by the Lua engine.",
-	},
-		[]string{"node_name", "node_address"})
+		// used_memory_dataset_perc
+		//RedisMemoryUsedMemoryDatasetPerc = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		//	Namespace: "redis",
+		//	Subsystem: "memory",
+		//	Name:      "used_memory_dataset_perc",
+		//	Help:      "The percentage of used_memory_dataset out of the net memory usage (used_memory minus used_memory_startup).",
+		//},
+		//	[]string{"node_name", "node_address"})
 
-	// used_memory_scripts
-	RedisMemoryUsedMemoryScripts = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "used_memory_scripts",
-		Help:      "Number of bytes used by cached Lua scripts.",
-	},
-		[]string{"node_name", "node_address"})
+		// total_system_memory
+		redisMemoryTotalSystemMemory = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "total_system_memory",
+			Help:      "The total amount of memory that the Redis host has.",
+		},
+			[]string{"node_name", "node_address"})
 
-	// maxmemory
-	RedisMemoryMaxmemory = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "maxmemory",
-		Help:      "The value of the maxmemory configuration directive.",
-	},
-		[]string{"node_name", "node_address"})
+		// used_memory_lua
+		redisMemoryUsedMemoryLua = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "used_memory_lua",
+			Help:      "Number of bytes used by the Lua engine.",
+		},
+			[]string{"node_name", "node_address"})
 
-	// maxmemory_policy
-	//
-	RedisMemoryMaxmemoryPolicy = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "maxmemory_policy",
-		Help:      "The value of the maxmemory-policy configuration directive",
-	},
-		[]string{"node_name", "node_address"})
+		// used_memory_scripts
+		redisMemoryUsedMemoryScripts = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "used_memory_scripts",
+			Help:      "Number of bytes used by cached Lua scripts.",
+		},
+			[]string{"node_name", "node_address"})
 
-	// mem_fragmentation_ratio
-	RedisMemoryMemFragmentationRatio = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "mem_fragmentation_ratio",
-		Help:      "Ratio between used_memory_rss and used_memory.",
-	},
-		[]string{"node_name", "node_address"})
+		// maxmemory
+		redisMemoryMaxmemory = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "maxmemory",
+			Help:      "The value of the maxmemory configuration directive.",
+		},
+			[]string{"node_name", "node_address"})
 
-	// mem_allocator
-	RedisMemoryMemAllocator = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "mem_allocator",
-		Help:      "Memory allocator, chosen at compile time.",
-	},
-		[]string{"node_name", "node_address", "allocator"})
+		// maxmemory_policy
+		//
+		redisMemoryMaxmemoryPolicy = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "maxmemory_policy",
+			Help:      "The value of the maxmemory-policy configuration directive",
+		},
+			[]string{"node_name", "node_address"})
 
-	// active_defrag_running
-	RedisMemoryActiveDefragRunning = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "active_defrag_running",
-		Help:      "Flag indicating if active defragmentation is active.",
-	},
-		[]string{"node_name", "node_address"})
+		// mem_fragmentation_ratio
+		redisMemoryMemFragmentationRatio = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "mem_fragmentation_ratio",
+			Help:      "Ratio between used_memory_rss and used_memory.",
+		},
+			[]string{"node_name", "node_address"})
 
-	// lazyfree_pending_objects
-	RedisMemoryLazyfreePendingObjects = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "lazyfree_pending_objects",
-		Help:      "The number of objects waiting to be freed (as a result of calling UNLINK, or FLUSHDB and FLUSHALL with the ASYNC option).",
-	},
-		[]string{"node_name", "node_address"})
+		// mem_allocator
+		redisMemoryMemAllocator = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "mem_allocator",
+			Help:      "Memory allocator, chosen at compile time.",
+		},
+			[]string{"node_name", "node_address", "allocator"})
 
-	// allocator_allocated
-	RedisMemoryAllocatorAllocated = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "allocator_allocated",
-		Help:      "",
-	},
-		[]string{"node_name", "node_address"})
+		// active_defrag_running
+		redisMemoryActiveDefragRunning = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "active_defrag_running",
+			Help:      "Flag indicating if active defragmentation is active.",
+		},
+			[]string{"node_name", "node_address"})
 
-	// allocator_active
-	RedisMemoryAllocatorActive = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "allocator_active",
-		Help:      "",
-	},
-		[]string{"node_name", "node_address"})
+		// lazyfree_pending_objects
+		redisMemoryLazyfreePendingObjects = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "lazyfree_pending_objects",
+			Help:      "The number of objects waiting to be freed (as a result of calling UNLINK, or FLUSHDB and FLUSHALL with the ASYNC option).",
+		},
+			[]string{"node_name", "node_address"})
 
-	// allocator_resident
-	RedisMemoryAllocatorResident = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "allocator_resident",
-		Help:      "",
-	},
-		[]string{"node_name", "node_address"})
+		// allocator_allocated
+		redisMemoryAllocatorAllocated = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "allocator_allocated",
+			Help:      "",
+		},
+			[]string{"node_name", "node_address"})
 
-	// allocator_frag_ratio
-	RedisMemoryAllocatorFragRatio = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "allocator_frag_ratio",
-		Help:      "",
-	},
-		[]string{"node_name", "node_address"})
+		// allocator_active
+		redisMemoryAllocatorActive = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "allocator_active",
+			Help:      "",
+		},
+			[]string{"node_name", "node_address"})
 
-	// allocator_frag_bytes
-	RedisMemoryAllocatorFragBytes = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "allocator_frag_bytes",
-		Help:      "",
-	},
-		[]string{"node_name", "node_address"})
+		// allocator_resident
+		redisMemoryAllocatorResident = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "allocator_resident",
+			Help:      "",
+		},
+			[]string{"node_name", "node_address"})
 
-	// allocator_rss_ratio
-	RedisMemoryAllocatorRSSRatio = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "allocator_rss_ratio",
-		Help:      "",
-	},
-		[]string{"node_name", "node_address"})
+		// allocator_frag_ratio
+		redisMemoryAllocatorFragRatio = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "allocator_frag_ratio",
+			Help:      "",
+		},
+			[]string{"node_name", "node_address"})
 
-	// allocator_rss_bytes
-	RedisMemoryAllocatorRSSBytes = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "allocator_rss_bytes",
-		Help:      "",
-	},
-		[]string{"node_name", "node_address"})
+		// allocator_frag_bytes
+		redisMemoryAllocatorFragBytes = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "allocator_frag_bytes",
+			Help:      "",
+		},
+			[]string{"node_name", "node_address"})
 
-	// rss_overhead_ratio
-	RedisMemoryRSSOverheadRatio = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "rss_overhead_ratio",
-		Help:      "",
-	},
-		[]string{"node_name", "node_address"})
+		// allocator_rss_ratio
+		redisMemoryAllocatorRSSRatio = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "allocator_rss_ratio",
+			Help:      "",
+		},
+			[]string{"node_name", "node_address"})
 
-	// rss_overhead_bytes
-	RedisMemoryRSSOverheadBytes = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "rss_overhead_bytes",
-		Help:      "",
-	},
-		[]string{"node_name", "node_address"})
+		// allocator_rss_bytes
+		redisMemoryAllocatorRSSBytes = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "allocator_rss_bytes",
+			Help:      "",
+		},
+			[]string{"node_name", "node_address"})
 
-	// mem_fragmentation_bytes
-	RedisMemoryMemFragmentationBytes = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "mem_fragmentation_bytes",
-		Help:      "",
-	},
-		[]string{"node_name", "node_address"})
+		// rss_overhead_ratio
+		redisMemoryRSSOverheadRatio = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "rss_overhead_ratio",
+			Help:      "",
+		},
+			[]string{"node_name", "node_address"})
 
-	// mem_not_counted_for_evict
-	RedisMemoryMemNotCountedForEvict = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "mem_not_counted_for_evict",
-		Help:      "",
-	},
-		[]string{"node_name", "node_address"})
+		// rss_overhead_bytes
+		redisMemoryRSSOverheadBytes = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "rss_overhead_bytes",
+			Help:      "",
+		},
+			[]string{"node_name", "node_address"})
 
-	// mem_replication_backlog
-	RedisMemoryMemReplicationBacklog = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "mem_replication_backlog",
-		Help:      "",
-	},
-		[]string{"node_name", "node_address"})
+		// mem_fragmentation_bytes
+		redisMemoryMemFragmentationBytes = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "mem_fragmentation_bytes",
+			Help:      "",
+		},
+			[]string{"node_name", "node_address"})
 
-	// mem_clients_slaves
-	RedisMemoryMemClientsSlaves = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "mem_clients_slaves",
-		Help:      "",
-	},
-		[]string{"node_name", "node_address"})
+		// mem_not_counted_for_evict
+		redisMemoryMemNotCountedForEvict = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "mem_not_counted_for_evict",
+			Help:      "",
+		},
+			[]string{"node_name", "node_address"})
 
-	// mem_clients_normal
-	RedisMemoryMemClientsNormal = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "mem_clients_normal",
-		Help:      "",
-	},
-		[]string{"node_name", "node_address"})
+		// mem_replication_backlog
+		redisMemoryMemReplicationBacklog = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "mem_replication_backlog",
+			Help:      "",
+		},
+			[]string{"node_name", "node_address"})
 
-	// mem_aof_buffer
-	RedisMemoryMemAofBuffer = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "mem_aof_buffer",
-		Help:      "",
-	},
-		[]string{"node_name", "node_address"})
+		// mem_clients_slaves
+		redisMemoryMemClientsSlaves = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "mem_clients_slaves",
+			Help:      "",
+		},
+			[]string{"node_name", "node_address"})
 
-	// number_of_cached_scripts
-	RedisMemoryNumberOfCachedScripts = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "redis",
-		Subsystem: "memory",
-		Name:      "number_of_cached_scripts",
-		Help:      "",
-	},
-		[]string{"node_name", "node_address"})
-)
+		// mem_clients_normal
+		redisMemoryMemClientsNormal = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "mem_clients_normal",
+			Help:      "",
+		},
+			[]string{"node_name", "node_address"})
 
-func SetRedisMemory(nodeName, nodeAddress string, r map[string]string) error {
+		// mem_aof_buffer
+		redisMemoryMemAofBuffer = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "mem_aof_buffer",
+			Help:      "",
+		},
+			[]string{"node_name", "node_address"})
+
+		// number_of_cached_scripts
+		redisMemoryNumberOfCachedScripts = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "redis",
+			Subsystem: "memory",
+			Name:      "number_of_cached_scripts",
+			Help:      "",
+		},
+			[]string{"node_name", "node_address"})
+	)
+	return &RedisMemoryCollector{
+		redisMemoryUsedMemory,
+		redisMemoryUsedMemoryRSS,
+		redisMemoryUsedMemoryPeak,
+		redisMemoryUsedMemoryOverhead,
+		redisMemoryUsedMemoryStartup,
+		redisMemoryUsedMemoryDataset,
+		redisMemoryTotalSystemMemory,
+		redisMemoryUsedMemoryLua,
+		redisMemoryUsedMemoryScripts,
+		redisMemoryMaxmemory,
+		redisMemoryMaxmemoryPolicy,
+		redisMemoryMemFragmentationRatio,
+		redisMemoryMemAllocator,
+		redisMemoryActiveDefragRunning,
+		redisMemoryLazyfreePendingObjects,
+		redisMemoryAllocatorAllocated,
+		redisMemoryAllocatorActive,
+		redisMemoryAllocatorResident,
+		redisMemoryAllocatorFragRatio,
+		redisMemoryAllocatorFragBytes,
+		redisMemoryAllocatorRSSRatio,
+		redisMemoryAllocatorRSSBytes,
+		redisMemoryRSSOverheadRatio,
+		redisMemoryRSSOverheadBytes,
+		redisMemoryMemFragmentationBytes,
+		redisMemoryMemNotCountedForEvict,
+		redisMemoryMemReplicationBacklog,
+		redisMemoryMemClientsSlaves,
+		redisMemoryMemClientsNormal,
+		redisMemoryMemAofBuffer,
+		redisMemoryNumberOfCachedScripts,
+	}
+}
+
+func (m *RedisMemoryCollector) MustRegister(registry *prometheus.Registry) {
+	registry.MustRegister(m.UsedMemory)
+	registry.MustRegister(m.UsedMemoryRSS)
+	registry.MustRegister(m.UsedMemoryPeak)
+	// registry.MustRegister(m.UesdMemoryPeakPerc)
+	registry.MustRegister(m.UsedMemoryOverhead)
+	registry.MustRegister(m.UsedMemoryStartup)
+	registry.MustRegister(m.UsedMemoryDataset)
+	// registry.MustRegister(m.UsedMemoryDatasetPerc)
+	registry.MustRegister(m.TotalSystemMemory)
+	registry.MustRegister(m.UsedMemoryLua)
+	registry.MustRegister(m.UsedMemoryScripts)
+	registry.MustRegister(m.Maxmemory)
+	registry.MustRegister(m.MaxmemoryPolicy)
+	registry.MustRegister(m.MemFragmentationRatio)
+	registry.MustRegister(m.MemAllocator)
+	registry.MustRegister(m.ActiveDefragRunning)
+	registry.MustRegister(m.LazyfreePendingObjects)
+	registry.MustRegister(m.AllocatorAllocated)
+	registry.MustRegister(m.AllocatorActive)
+	registry.MustRegister(m.AllocatorResident)
+	registry.MustRegister(m.AllocatorFragRatio)
+	registry.MustRegister(m.AllocatorFragBytes)
+	registry.MustRegister(m.AllocatorRSSRatio)
+	registry.MustRegister(m.AllocatorRSSBytes)
+	registry.MustRegister(m.RSSOverheadRatio)
+	registry.MustRegister(m.RSSOverheadBytes)
+	registry.MustRegister(m.MemFragmentationBytes)
+	registry.MustRegister(m.MemNotCountedForEvict)
+	registry.MustRegister(m.MemReplicationBacklog)
+	registry.MustRegister(m.MemClientsSlaves)
+	registry.MustRegister(m.MemClientsNormal)
+	registry.MustRegister(m.MemAofBuffer)
+	registry.MustRegister(m.NumberOfCachedScripts)
+}
+
+func (m *RedisMemoryCollector) Unregister(registry *prometheus.Registry) bool {
+	if !registry.Unregister(m.UsedMemory) {
+		return false
+	}
+	if !registry.Unregister(m.UsedMemoryRSS) {
+		return false
+	}
+	if !registry.Unregister(m.UsedMemoryPeak) {
+		return false
+	}
+	// registry.MustRegister(m.UesdMemoryPeakPerc)
+	if !registry.Unregister(m.UsedMemoryOverhead) {
+		return false
+	}
+	if !registry.Unregister(m.UsedMemoryStartup) {
+		return false
+	}
+	if !registry.Unregister(m.UsedMemoryDataset) {
+		return false
+	}
+	// registry.MustRegister(m.UsedMemoryDatasetPerc)
+	if !registry.Unregister(m.TotalSystemMemory) {
+		return false
+	}
+	if !registry.Unregister(m.UsedMemoryLua) {
+		return false
+	}
+	if !registry.Unregister(m.UsedMemoryScripts) {
+		return false
+	}
+	if !registry.Unregister(m.Maxmemory) {
+		return false
+	}
+	if !registry.Unregister(m.MaxmemoryPolicy) {
+		return false
+	}
+	if !registry.Unregister(m.MemFragmentationRatio) {
+		return false
+	}
+	if !registry.Unregister(m.MemAllocator) {
+		return false
+	}
+	if !registry.Unregister(m.ActiveDefragRunning) {
+		return false
+	}
+	if !registry.Unregister(m.LazyfreePendingObjects) {
+		return false
+	}
+	if !registry.Unregister(m.AllocatorAllocated) {
+		return false
+	}
+	if !registry.Unregister(m.AllocatorActive) {
+		return false
+	}
+	if !registry.Unregister(m.AllocatorResident) {
+		return false
+	}
+	if !registry.Unregister(m.AllocatorFragRatio) {
+		return false
+	}
+	if !registry.Unregister(m.AllocatorFragBytes) {
+		return false
+	}
+	if !registry.Unregister(m.AllocatorRSSRatio) {
+		return false
+	}
+	if !registry.Unregister(m.AllocatorRSSBytes) {
+		return false
+	}
+	if !registry.Unregister(m.RSSOverheadRatio) {
+		return false
+	}
+	if !registry.Unregister(m.RSSOverheadBytes) {
+		return false
+	}
+	if !registry.Unregister(m.MemFragmentationBytes) {
+		return false
+	}
+	if !registry.Unregister(m.MemNotCountedForEvict) {
+		return false
+	}
+	if !registry.Unregister(m.MemReplicationBacklog) {
+		return false
+	}
+	if !registry.Unregister(m.MemClientsSlaves) {
+		return false
+	}
+	if !registry.Unregister(m.MemClientsNormal) {
+		return false
+	}
+	if !registry.Unregister(m.MemAofBuffer) {
+		return false
+	}
+	if !registry.Unregister(m.NumberOfCachedScripts) {
+		return false
+	}
+	return true
+}
+
+func (m *RedisMemoryCollector) Set(nodeName, nodeAddress string, r map[string]string) error {
 	if usedMemoryStr, ok := r["used_memory"]; ok {
 		if usedMemory, err := strconv.Atoi(usedMemoryStr); err == nil {
-			RedisMemoryUsedMemory.WithLabelValues(nodeName, nodeAddress).Set(float64(usedMemory))
+			m.UsedMemory.WithLabelValues(nodeName, nodeAddress).Set(float64(usedMemory))
 		}
 	}
 	if usedMemoryRSSStr, ok := r["used_memory_rss"]; ok {
 		if usedMemoryRSS, err := strconv.Atoi(usedMemoryRSSStr); err == nil {
-			RedisMemoryUsedMemoryRSS.WithLabelValues(nodeName, nodeAddress).Set(float64(usedMemoryRSS))
+			m.UsedMemoryRSS.WithLabelValues(nodeName, nodeAddress).Set(float64(usedMemoryRSS))
 		}
 	}
 	if usedMemoryPeakStr, ok := r["used_memory_peak"]; ok {
 		if usedMemoryPeak, err := strconv.Atoi(usedMemoryPeakStr); err == nil {
-			RedisMemoryUsedMemoryPeak.WithLabelValues(nodeName, nodeAddress).Set(float64(usedMemoryPeak))
+			m.UsedMemoryPeak.WithLabelValues(nodeName, nodeAddress).Set(float64(usedMemoryPeak))
 		}
 	}
 
@@ -341,59 +546,59 @@ func SetRedisMemory(nodeName, nodeAddress string, r map[string]string) error {
 
 	if usedMemoryOverheadStr, ok := r["used_memory_overhead"]; ok {
 		if usedMemoryOverhead, err := strconv.Atoi(usedMemoryOverheadStr); err == nil {
-			RedisMemoryUsedMemoryOverhead.WithLabelValues(nodeName, nodeAddress).Set(float64(usedMemoryOverhead))
+			m.UsedMemoryOverhead.WithLabelValues(nodeName, nodeAddress).Set(float64(usedMemoryOverhead))
 		}
 	}
 	if usedMemoryStratupStr, ok := r["used_memory_startup"]; ok {
 		if usedMemoryStratup, err := strconv.Atoi(usedMemoryStratupStr); err == nil {
-			RedisMemoryUsedMemoryStartup.WithLabelValues(nodeName, nodeAddress).Set(float64(usedMemoryStratup))
+			m.UsedMemoryStartup.WithLabelValues(nodeName, nodeAddress).Set(float64(usedMemoryStratup))
 		}
 	}
 	if usedMemoryDatasetStr, ok := r["used_memory_dataset"]; ok {
 		if usedMemoryDataset, err := strconv.Atoi(usedMemoryDatasetStr); err == nil {
-			RedisMemoryUsedMemoryDataset.WithLabelValues(nodeName, nodeAddress).Set(float64(usedMemoryDataset))
+			m.UsedMemoryDataset.WithLabelValues(nodeName, nodeAddress).Set(float64(usedMemoryDataset))
 		}
 	}
 	//if usedMemoryDatasetPerc, ok := r["used_memory_dataset_perc"]; ok {
 	//}
 	if allocatorAllocatedStr, ok := r["allocator_allocated"]; ok {
 		if allocatorAllocated, err := strconv.Atoi(allocatorAllocatedStr); err == nil {
-			RedisMemoryAllocatorAllocated.WithLabelValues(nodeName, nodeAddress).Set(float64(allocatorAllocated))
+			m.AllocatorAllocated.WithLabelValues(nodeName, nodeAddress).Set(float64(allocatorAllocated))
 		}
 	}
 	if allocatorActiveStr, ok := r["allocator_active"]; ok {
 		if allocatorActive, err := strconv.Atoi(allocatorActiveStr); err == nil {
-			RedisMemoryAllocatorActive.WithLabelValues(nodeName, nodeAddress).Set(float64(allocatorActive))
+			m.AllocatorActive.WithLabelValues(nodeName, nodeAddress).Set(float64(allocatorActive))
 		}
 	}
 	if allocatorResidentStr, ok := r["allocator_resident"]; ok {
 		if allocatorResident, err := strconv.Atoi(allocatorResidentStr); err == nil {
-			RedisMemoryAllocatorResident.WithLabelValues(nodeName, nodeAddress).Set(float64(allocatorResident))
+			m.AllocatorResident.WithLabelValues(nodeName, nodeAddress).Set(float64(allocatorResident))
 		}
 	}
 	if totalSystemMemoryStr, ok := r["total_system_memory"]; ok {
 		if totalSystemMemory, err := strconv.Atoi(totalSystemMemoryStr); err == nil {
-			RedisMemoryTotalSystemMemory.WithLabelValues(nodeName, nodeAddress).Set(float64(totalSystemMemory))
+			m.TotalSystemMemory.WithLabelValues(nodeName, nodeAddress).Set(float64(totalSystemMemory))
 		}
 	}
 	if usedMemoryLuaStr, ok := r["used_memory_lua"]; ok {
 		if usedMemoryLua, err := strconv.Atoi(usedMemoryLuaStr); err == nil {
-			RedisMemoryUsedMemoryLua.WithLabelValues(nodeName, nodeAddress).Set(float64(usedMemoryLua))
+			m.UsedMemoryLua.WithLabelValues(nodeName, nodeAddress).Set(float64(usedMemoryLua))
 		}
 	}
 	if usedMemoryScriptsStr, ok := r["used_memory_scripts"]; ok {
 		if usedMemoryScripts, err := strconv.Atoi(usedMemoryScriptsStr); err == nil {
-			RedisMemoryUsedMemoryScripts.WithLabelValues(nodeName, nodeAddress).Set(float64(usedMemoryScripts))
+			m.UsedMemoryScripts.WithLabelValues(nodeName, nodeAddress).Set(float64(usedMemoryScripts))
 		}
 	}
 	if numberOfCachedScriptsStr, ok := r["number_of_cached_scripts"]; ok {
 		if numberOfCachedScripts, err := strconv.Atoi(numberOfCachedScriptsStr); err == nil {
-			RedisMemoryNumberOfCachedScripts.WithLabelValues(nodeName, nodeAddress).Set(float64(numberOfCachedScripts))
+			m.NumberOfCachedScripts.WithLabelValues(nodeName, nodeAddress).Set(float64(numberOfCachedScripts))
 		}
 	}
 	if maxmemoryStr, ok := r["maxmemory"]; ok {
 		if maxmemory, err := strconv.Atoi(maxmemoryStr); err == nil {
-			RedisMemoryMaxmemory.WithLabelValues(nodeName, nodeAddress).Set(float64(maxmemory))
+			m.Maxmemory.WithLabelValues(nodeName, nodeAddress).Set(float64(maxmemory))
 		}
 	}
 	if maxmemoryPolicyStr, ok := r["maxmemory_policy"]; ok {
@@ -416,74 +621,74 @@ func SetRedisMemory(nodeName, nodeAddress string, r map[string]string) error {
 		case "noeviction":
 			maxmemoryPolicy = noeviction
 		}
-		RedisMemoryMaxmemoryPolicy.WithLabelValues(nodeName, nodeAddress).Set(float64(maxmemoryPolicy))
+		m.MaxmemoryPolicy.WithLabelValues(nodeName, nodeAddress).Set(float64(maxmemoryPolicy))
 	}
 	if allocatorFragRatioStr, ok := r["allocator_frag_ratio"]; ok {
 		if allocatorFragRatio, err := strconv.ParseFloat(allocatorFragRatioStr, 64); err == nil {
-			RedisMemoryAllocatorFragRatio.WithLabelValues(nodeName, nodeAddress).Set(allocatorFragRatio)
+			m.AllocatorFragRatio.WithLabelValues(nodeName, nodeAddress).Set(allocatorFragRatio)
 		}
 	}
 	if allocatorFragBytesStr, ok := r["allocator_frag_bytes"]; ok {
 		if allocatorFragBytes, err := strconv.Atoi(allocatorFragBytesStr); err == nil {
-			RedisMemoryAllocatorFragBytes.WithLabelValues(nodeName, nodeAddress).Set(float64(allocatorFragBytes))
+			m.AllocatorFragBytes.WithLabelValues(nodeName, nodeAddress).Set(float64(allocatorFragBytes))
 		}
 	}
 	if rssOverheadRatioStr, ok := r["rss_overhead_ratio"]; ok {
 		if rssOverheadRatio, err := strconv.ParseFloat(rssOverheadRatioStr, 64); err == nil {
-			RedisMemoryRSSOverheadRatio.WithLabelValues(nodeName, nodeAddress).Set(rssOverheadRatio)
+			m.RSSOverheadRatio.WithLabelValues(nodeName, nodeAddress).Set(rssOverheadRatio)
 		}
 	}
 	if rssOverheadBytesStr, ok := r["rss_overhead_bytes"]; ok {
 		if rssOverheadBytes, err := strconv.Atoi(rssOverheadBytesStr); err == nil {
-			RedisMemoryRSSOverheadBytes.WithLabelValues(nodeName, nodeAddress).Set(float64(rssOverheadBytes))
+			m.RSSOverheadBytes.WithLabelValues(nodeName, nodeAddress).Set(float64(rssOverheadBytes))
 		}
 	}
 	if memFragmentationRatioStr, ok := r["mem_fragmentation_ratio"]; ok {
 		if memFragmentationRatio, err := strconv.ParseFloat(memFragmentationRatioStr, 64); err == nil {
-			RedisMemoryMemFragmentationRatio.WithLabelValues(nodeName, nodeAddress).Set(memFragmentationRatio)
+			m.MemFragmentationRatio.WithLabelValues(nodeName, nodeAddress).Set(memFragmentationRatio)
 		}
 	}
 	if memFragmentationBytesStr, ok := r["mem_fragmentation_bytes"]; ok {
 		if memFragmentationBytes, err := strconv.Atoi(memFragmentationBytesStr); err == nil {
-			RedisMemoryMemFragmentationBytes.WithLabelValues(nodeName, nodeAddress).Set(float64(memFragmentationBytes))
+			m.MemFragmentationBytes.WithLabelValues(nodeName, nodeAddress).Set(float64(memFragmentationBytes))
 		}
 	}
 	if memNotCountedForEvictStr, ok := r["mem_not_counted_for_evict"]; ok {
 		if memNotCountedForEvict, err := strconv.Atoi(memNotCountedForEvictStr); err == nil {
-			RedisMemoryMemNotCountedForEvict.WithLabelValues(nodeName, nodeAddress).Set(float64(memNotCountedForEvict))
+			m.MemNotCountedForEvict.WithLabelValues(nodeName, nodeAddress).Set(float64(memNotCountedForEvict))
 		}
 	}
 	if memReplicationBacklogStr, ok := r["mem_replication_backlog"]; ok {
 		if memReplicationBacklog, err := strconv.Atoi(memReplicationBacklogStr); err == nil {
-			RedisMemoryMemReplicationBacklog.WithLabelValues(nodeName, nodeAddress).Set(float64(memReplicationBacklog))
+			m.MemReplicationBacklog.WithLabelValues(nodeName, nodeAddress).Set(float64(memReplicationBacklog))
 		}
 	}
 	if memClientsSlavesStr, ok := r["mem_clients_slaves"]; ok {
 		if memClientsSlaves, err := strconv.Atoi(memClientsSlavesStr); err == nil {
-			RedisMemoryMemClientsSlaves.WithLabelValues(nodeName, nodeAddress).Set(float64(memClientsSlaves))
+			m.MemClientsSlaves.WithLabelValues(nodeName, nodeAddress).Set(float64(memClientsSlaves))
 		}
 	}
 	if memClientsNormalStr, ok := r["mem_clients_normal"]; ok {
 		if memClientsNormal, err := strconv.Atoi(memClientsNormalStr); err == nil {
-			RedisMemoryMemClientsNormal.WithLabelValues(nodeName, nodeAddress).Set(float64(memClientsNormal))
+			m.MemClientsNormal.WithLabelValues(nodeName, nodeAddress).Set(float64(memClientsNormal))
 		}
 	}
 	if memAofBufferStr, ok := r["mem_aof_buffer"]; ok {
 		if memAofBuffer, err := strconv.Atoi(memAofBufferStr); err == nil {
-			RedisMemoryMemAofBuffer.WithLabelValues(nodeName, nodeAddress).Set(float64(memAofBuffer))
+			m.MemAofBuffer.WithLabelValues(nodeName, nodeAddress).Set(float64(memAofBuffer))
 		}
 	}
 	if memAllocator, ok := r["mem_allocator"]; ok {
-		RedisMemoryMemAllocator.WithLabelValues(nodeName, nodeAddress, memAllocator).Set(1)
+		m.MemAllocator.WithLabelValues(nodeName, nodeAddress, memAllocator).Set(1)
 	}
 	if activeDefragRunningStr, ok := r["active_defrag_running"]; ok {
 		if activeDefragRunning, err := strconv.Atoi(activeDefragRunningStr); err == nil {
-			RedisMemoryActiveDefragRunning.WithLabelValues(nodeName, nodeAddress).Set(float64(activeDefragRunning))
+			m.ActiveDefragRunning.WithLabelValues(nodeName, nodeAddress).Set(float64(activeDefragRunning))
 		}
 	}
 	if lazyfreePendingObjectsStr, ok := r["lazyfree_pending_objects"]; ok {
 		if lazyfreePendingObjects, err := strconv.Atoi(lazyfreePendingObjectsStr); err == nil {
-			RedisMemoryLazyfreePendingObjects.WithLabelValues(nodeName, nodeAddress).Set(float64(lazyfreePendingObjects))
+			m.LazyfreePendingObjects.WithLabelValues(nodeName, nodeAddress).Set(float64(lazyfreePendingObjects))
 		}
 	}
 	return nil
